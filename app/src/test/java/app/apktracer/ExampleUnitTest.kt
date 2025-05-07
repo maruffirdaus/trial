@@ -1,4 +1,4 @@
-package dev.maruffirdaus.trial
+package app.apktracer
 
 import org.junit.Test
 

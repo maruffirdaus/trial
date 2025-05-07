@@ -1,23 +1,18 @@
-package dev.maruffirdaus.trial.util
+package app.apktracer.util
 
-import android.annotation.SuppressLint
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 object StraceUtil {
-    @SuppressLint("SdCardPath")
-    private const val TERMUX_STRACE_PATH = "/data/data/com.termux/files/usr/bin/strace"
-
-    suspend fun tracePackage(context: Context, packageName: String, timeout: Int = 5): Boolean =
+    suspend fun tracePackage(context: Context, packageName: String, timeout: Int = 30): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                if (!isStraceAvailable()) throw FileNotFoundException("Termux strace binary not found at $TERMUX_STRACE_PATH")
+                if (!isStraceAvailable(context)) extractStraceBinary(context)
 
                 val pid = findProcessId(packageName)
                     ?: throw IllegalStateException("Could not find process ID for package: $packageName")
@@ -26,11 +21,15 @@ object StraceUtil {
                     LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
                 val outputFile = File(
                     context.getExternalFilesDir(null),
-                    "Strace Logs/${packageName}_${timestamp}.log"
+                    "Logs/${timestamp}_${packageName}.txt"
                 )
                 outputFile.parentFile?.mkdirs()
 
-                val process = Runtime.getRuntime().exec("timeout $timeout su -c $TERMUX_STRACE_PATH -f -tt -p $pid")
+                val process = ProcessBuilder(
+                    "su",
+                    "-c",
+                    "timeout $timeout ${stracePath(context)} -f -tt -p $pid"
+                ).redirectErrorStream(true).start()
 
                 FileOutputStream(outputFile).use { fileOutput ->
                     process.inputStream.bufferedReader().use { reader ->
@@ -44,7 +43,9 @@ object StraceUtil {
                     }
                 }
 
-                return@withContext process.waitFor() == 0
+                val exitCode = process.waitFor()
+
+                return@withContext exitCode == 0 || exitCode == 124
             } catch (e: Exception) {
                 e.printStackTrace()
                 return@withContext false
@@ -53,14 +54,18 @@ object StraceUtil {
 
     private suspend fun findProcessId(packageName: String): Int? = withContext(Dispatchers.IO) {
         try {
-            val output =
-                Runtime.getRuntime().exec("su -c ps -A | grep $packageName").let { process ->
-                    process.inputStream.bufferedReader().use { it.readText() }
-                }.ifBlank {
-                    Runtime.getRuntime().exec("su -c ps | grep $packageName").let { process ->
-                        process.inputStream.bufferedReader().use { it.readText() }
-                    }
-                }
+            var process = ProcessBuilder("su", "-c", "ps -A | grep $packageName").start()
+            process.waitFor()
+
+            var output = process.inputStream.bufferedReader().use { it.readText() }
+
+            if (output.isBlank()) {
+                process = ProcessBuilder("su", "-c", "ps | grep $packageName").start()
+                process.waitFor()
+
+                output = process.inputStream.bufferedReader().use { it.readText() }
+            }
+
             val pid = output.split("\n")
                 .filter { it.contains(packageName) }
                 .firstNotNullOfOrNull { line ->
@@ -70,6 +75,7 @@ object StraceUtil {
                         else null
                     }
                 }
+
             return@withContext pid
         } catch (e: Exception) {
             e.printStackTrace()
@@ -77,7 +83,24 @@ object StraceUtil {
         }
     }
 
-    private fun isStraceAvailable(): Boolean = File(TERMUX_STRACE_PATH).let {
+    private fun extractStraceBinary(context: Context) {
+        val straceFile = File(stracePath(context))
+
+        try {
+            context.assets.open("strace-x64").use { input ->
+                FileOutputStream(straceFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            straceFile.setExecutable(true, false)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun stracePath(context: Context): String = "${context.filesDir.absolutePath}/strace"
+
+    private fun isStraceAvailable(context: Context): Boolean = File(stracePath(context)).let {
         return@let it.exists() && it.canExecute()
     }
 }

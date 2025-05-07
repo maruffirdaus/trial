@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.maruffirdaus.trial"
+    namespace = "app.apktracer"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "dev.maruffirdaus.trial"
+        applicationId = "app.apktracer"
         minSdk = 29
         targetSdk = 35
         versionCode = 1
@@ -49,6 +49,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

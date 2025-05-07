@@ -1,4 +1,4 @@
-package dev.maruffirdaus.trial.util
+package app.apktracer.util
 
 import android.content.Context
 import android.net.Uri
@@ -13,9 +13,13 @@ object ApkUtil {
         try {
             val path = getPathFromUri(uri)
                 ?: (throw FileNotFoundException("File path could not be resolved from URI: $uri"))
-            val output = Runtime.getRuntime().exec("su -c pm install -r -g $path").let { process ->
-                process.inputStream.bufferedReader().use { it.readText() }
-            }
+
+            val process =
+                ProcessBuilder("su", "-c", "pm install -r $path").redirectErrorStream(true).start()
+            process.waitFor()
+
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+
             if (output.contains("Success") || output.isEmpty()) {
                 val packageInfo = File(path).let {
                     context.packageManager.getPackageArchiveInfo(it.absolutePath, 0)
@@ -32,8 +36,11 @@ object ApkUtil {
 
     suspend fun launch(packageName: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            Runtime.getRuntime()
-                .exec("su -c monkey -p $packageName -c android.intent.category.LAUNCHER 1")
+            ProcessBuilder(
+                "su",
+                "-c",
+                "monkey -p $packageName -c android.intent.category.LAUNCHER 1"
+            ).start()
             return@withContext true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -43,7 +50,7 @@ object ApkUtil {
 
     suspend fun kill(packageName: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            Runtime.getRuntime().exec("su -c am force-stop $packageName")
+            ProcessBuilder("su", "-c", "am force-stop $packageName").start()
             return@withContext true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -53,10 +60,13 @@ object ApkUtil {
 
     suspend fun uninstall(packageName: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val output =
-                Runtime.getRuntime().exec("su -c pm uninstall $packageName").let { process ->
-                    process.inputStream.bufferedReader().use { it.readText() }
-                }
+            val process =
+                ProcessBuilder("su", "-c", "pm uninstall $packageName").redirectErrorStream(true)
+                    .start()
+            process.waitFor()
+
+            val output = process.inputStream.bufferedReader().use { it.readText() }
+
             return@withContext output.contains("Success") || output.isEmpty()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -76,8 +86,11 @@ object ApkUtil {
     private fun copyFileToTemp(path: String): String? {
         val tempPath = "/data/local/tmp/${File(path).name}"
         try {
-            Runtime.getRuntime().exec("su -c cp \"$path\" \"$tempPath\" && chmod 777 \"$tempPath\"")
-                .waitFor()
+            ProcessBuilder(
+                "su",
+                "-c",
+                "cp \"$path\" \"$tempPath\" && chmod 777 \"$tempPath\""
+            ).start().waitFor()
             return tempPath
         } catch (e: Exception) {
             e.printStackTrace()

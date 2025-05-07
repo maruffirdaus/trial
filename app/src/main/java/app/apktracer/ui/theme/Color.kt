@@ -1,4 +1,4 @@
-package dev.maruffirdaus.trial.ui.theme
+package app.apktracer.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
